@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stickman Kingdom Wars</title>
+<style>
+  :root{
+    --gold:#f4c542; --hpgreen:#4caf50; --hpred:#e74c3c; --panel:#1e2430;
+    --panel2:#262e3d; --accent:#5b8def; --text:#eef1f6;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#0d1117;color:var(--text);font-family:'Trebuchet MS',Arial,sans-serif;overflow:hidden;}
+  #game{position:relative;width:960px;max-width:100vw;margin:0 auto;}
+  canvas{display:block;background:linear-gradient(#8fd3ff 0%,#8fd3ff 55%,#7fc96a 55%,#5fae52 100%);width:100%;image-rendering:optimizeSpeed;border-bottom:4px solid #3d2b1f;}
+
+  #topbar{display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:var(--panel);font-size:14px;}
+  .stat{display:flex;align-items:center;gap:6px;margin-right:14px;}
+  .barWrap{width:160px;height:14px;background:#333;border-radius:7px;overflow:hidden;border:1px solid #000;}
+  .barFillYou{height:100%;background:var(--hpgreen);width:100%;transition:width .2s;}
+  .barFillEnemy{height:100%;background:var(--hpred);width:100%;transition:width .2s;}
+
+  #bottombar{display:flex;justify-content:space-between;align-items:center;background:var(--panel);padding:8px 10px;gap:8px;flex-wrap:wrap;}
+  .unitBtn{position:relative;width:88px;background:var(--panel2);border:2px solid #3a4356;border-radius:8px;color:var(--text);padding:6px 4px;cursor:pointer;text-align:center;font-size:12px;transition:transform .1s;}
+  .unitBtn:hover{transform:translateY(-2px);border-color:var(--accent);}
+  .unitBtn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+  .unitBtn .icon{font-size:22px;}
+  .unitBtn .cost{color:var(--gold);font-weight:bold;}
+  .unitBtn .key{position:absolute;top:2px;left:4px;font-size:10px;opacity:.6;}
+
+  #rightControls{display:flex;gap:8px;}
+  #rightControls button{background:var(--panel2);border:1px solid #3a4356;color:var(--text);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:16px;}
+  #rightControls button:hover{border-color:var(--accent);}
+
+  .overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(5,8,14,0.92);display:flex;align-items:center;justify-content:center;z-index:20;}
+  .hidden{display:none !important;}
+  .modal{background:var(--panel);border:2px solid var(--accent);border-radius:12px;padding:26px 34px;min-width:320px;text-align:center;}
+  .modal h1{margin:0 0 12px;letter-spacing:1px;}
+  .statLine{display:flex;justify-content:space-between;font-size:14px;margin:4px 0;padding:0 10px;}
+  .modal button{margin-top:14px;margin-right:8px;background:var(--accent);border:none;color:#fff;padding:10px 18px;border-radius:6px;cursor:pointer;font-size:14px;}
+  .modal button.secondary{background:#3a4356;}
+
+  #startScreen h1{font-size:34px;margin-bottom:4px;letter-spacing:2px;}
+  #startScreen p{opacity:.75;font-size:13px;max-width:360px;}
+  #startScreen .menuBtn{display:block;width:260px;margin:8px auto;padding:12px;background:var(--panel2);border:2px solid #3a4356;border-radius:8px;color:var(--text);font-size:15px;cursor:pointer;}
+  #startScreen .menuBtn:hover{border-color:var(--accent);}
+
+  #dmgLayer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+  .dmgNum{position:absolute;font-weight:bold;font-size:13px;color:#fff;text-shadow:0 0 3px #000;animation:floatUp 0.8s ease-out forwards;}
+  @keyframes floatUp{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-30px);}}
+
+  #toast{position:absolute;top:44px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:4px 12px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="topbar">
+    <div style="display:flex;">
+      <div class="stat">💰 <span id="goldTxt">150</span> <span style="opacity:.6;font-size:11px;">(+<span id="incomeTxt">10</span>/s)</span></div>
+      <div class="stat">👷 <span id="workerTxt">1</span></div>
+    </div>
+    <div style="display:flex;align-items:center;">
+      <div class="stat">🏰 YOU <div class="barWrap"><div class="barFillYou" id="playerHpBar"></div></div></div>
+      <div class="stat">ENEMY 🏰 <div class="barWrap"><div class="barFillEnemy" id="enemyHpBar"></div></div></div>
+    </div>
+    <div class="stat">⏱ <span id="timeTxt">0:00</span></div>
+  </div>
+
+  <div style="position:relative;">
+    <canvas id="canvas" width="960" height="380"></canvas>
+    <div id="dmgLayer"></div>
+    <div id="toast"></div>
+
+    <div id="startScreen" class="overlay">
+      <div class="modal" style="text-align:center;">
+        <h1>⚔️ STICKMAN<br>KINGDOM WARS</h1>
+        <p>Build your economy, recruit an army, break the enemy castle before yours falls. Swordsmen beat archers, archers beat swordsmen, spearmen beat knights.</p>
+        <button class="menuBtn" id="btnPlay">⚔️ Play Battle</button>
+        <button class="menuBtn" id="btnHow">❔ How to Play</button>
+      </div>
+    </div>
+
+    <div id="howOverlay" class="overlay hidden">
+      <div class="modal" style="text-align:left;max-width:420px;">
+        <h1 style="text-align:center;">How to Play</h1>
+        <p>💰 Gold trickles in automatically, and workers boost it further.</p>
+        <p>⚔️ Spend gold to spawn units at your castle. They march toward the enemy castle and fight anything in their way.</p>
+        <p>🧠 Counters matter: Archer beats Swordsman, Swordsman beats Archer, Spearman beats Knight.</p>
+        <p>🏰 Destroy the enemy castle's HP to win. Protect your own.</p>
+        <p>⌨️ Keys 1-4 spawn units, W recruits a worker, Space pauses.</p>
+        <button id="btnHowClose">Got it</button>
+      </div>
+    </div>
+
+    <div id="pauseOverlay" class="overlay hidden">
+      <div class="modal">
+        <h1>PAUSED</h1>
+        <button id="btnResume">Resume</button>
+        <button class="secondary" id="btnRestartP">Restart</button>
+      </div>
+    </div>
+
+    <div id="endOverlay" class="overlay hidden">
+      <div class="modal">
+        <h1 id="endTitle">🏆 VICTORY!</h1>
+        <div class="statLine"><span>Units Spawned</span><span id="stSpawned">0</span></div>
+        <div class="statLine"><span>Enemies Defeated</span><span id="stKills">0</span></div>
+        <div class="statLine"><span>Units Lost</span><span id="stLost">0</span></div>
+        <div class="statLine"><span>Gold Earned</span><span id="stGold">0</span></div>
+        <div class="statLine"><span>Battle Time</span><span id="stTime">0:00</span></div>
+        <button id="btnRestartE">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottombar">
+    <div id="unitButtons" style="display:flex;gap:6px;"></div>
+    <div id="rightControls">
+      <button id="btnWorker" title="Recruit Worker (W)">👷 Worker <span id="workerCostTxt" style="color:var(--gold)"></span></button>
+      <button id="btnPause">⏸</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const GROUND_Y = H - 55;
+
+// ---------- Unit definitions ----------
+const UNIT_DEFS = {
+  swordsman: { key:'1', icon:'⚔️', name:'Swordsman', cost:60,  hp:80,  dmg:12, range:22,  atkCd:0.8, speed:42, ranged:false, color:'#dfe6ee' },
+  archer:    { key:'2', icon:'🏹', name:'Archer',    cost:90,  hp:50,  dmg:11, range:130, atkCd:1.1, speed:38, ranged:true,  color:'#8bd17c' },
+  spearman:  { key:'3', icon:'🛡️', name:'Spearman',  cost:100, hp:120, dmg:14, range:26,  atkCd:1.0, speed:30, ranged:false, color:'#8ec9ff' },
+  knight:    { key:'4', icon:'🐎', name:'Knight',    cost:180, hp:170, dmg:24, range:24,  atkCd:0.9, speed:58, ranged:false, color:'#f4a259' },
+};
+// attacker type -> defender type -> multiplier
+const COUNTERS = {
+  archer:   { swordsman: 1.5 },
+  swordsman:{ archer: 1.5 },
+  spearman: { knight: 1.6 },
+  knight:   { spearman: 0.75 },
+};
+
+let WORKER_BASE_COST = 80;
+
+// ---------- Game state ----------
+let state = null;
+function freshState(){
+  return {
+    running:false, paused:false, over:false,
+    gold:150, income:8, workers:1, workerCost:WORKER_BASE_COST,
+    time:0,
+    units:[], // {team,type,x,hp,maxhp,cdTimer,attacking(unit ref or null)}
+    proj:[], // {x,y,vx,team,dmg,targetId,color}
+    castleHpMax: 1600,
+    playerCastleHp: 1600,
+    enemyCastleHp: 1600,
+    playerX: 46, enemyX: W-46,
+    stats:{spawned:0, kills:0, lost:0, goldEarned:150},
+    enemyAI:{ gold:150, income:9, timer:0, spawnEvery:2.4, phase:'build' },
+    nextId:1,
+    fx: { particles:[], dyingUnits:[], shakeMag:0, shakeTimer:0 },
+  };
+}
+
+function unitY(){ return GROUND_Y; }
+
+function spawnUnit(team, type){
+  const def = UNIT_DEFS[type];
+  state.units.push({
+    id: state.nextId++, team, type,
+    x: team==='player'? state.playerX+20 : state.enemyX-20,
+    hp: def.hp, maxhp: def.hp, cdTimer:0, dead:false,
+    walkPhase: Math.random()*10, attackSwing:0, moving:false, koOffset:0, koVel:0,
+  });
+  if(team==='player') state.stats.spawned++;
+}
+
+// ---------- Visual FX state ----------
+function freshFx(){ return { particles:[], dyingUnits:[], shakeMag:0, shakeTimer:0 }; }
+function addShake(mag, dur){ state.fx.shakeMag = Math.max(state.fx.shakeMag, mag); state.fx.shakeTimer = Math.max(state.fx.shakeTimer, dur); }
+function spawnParticles(x,y,color,count,speed){
+  for(let i=0;i<count;i++){
+    const ang = Math.random()*Math.PI*2;
+    const spd = speed*(0.4+Math.random()*0.8);
+    state.fx.particles.push({x,y,vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd - 40, life:0.5, maxLife:0.5, color, size:2+Math.random()*2});
+  }
+}
+function killUnitVisual(u){
+  state.fx.dyingUnits.push({x:u.x, team:u.team, type:u.type, timer:0, dur:0.55});
+  spawnParticles(u.x, unitY()-16, u.team==='player'?'#4caf50':'#e74c3c', 8, 90);
+}
+
+// ---------- Enemy AI ----------
+function enemyCountFor(type){
+  return state.units.filter(u=>u.team==='enemy' && u.type===type).length;
+}
+function playerComposition(){
+  const comp = {swordsman:0, archer:0, spearman:0, knight:0};
+  state.units.forEach(u=>{ if(u.team==='player') comp[u.type]++; });
+  return comp;
+}
+function pickEnemyUnit(){
+  const comp = playerComposition();
+  // find the player's most common unit and try to counter it
+  let maxType=null, maxCount=0;
+  for(const t in comp){ if(comp[t]>maxCount){maxCount=comp[t]; maxType=t;} }
+  const counterMap = { archer:'swordsman', swordsman:'archer', knight:'spearman', spearman:'knight' };
+  if(maxType && maxCount>=2 && Math.random()<0.6 && counterMap[maxType] && state.enemyAI.gold>=UNIT_DEFS[counterMap[maxType]].cost){
+    return counterMap[maxType];
+  }
+  // otherwise weighted random by affordability & phase
+  const affordable = Object.keys(UNIT_DEFS).filter(t=>UNIT_DEFS[t].cost<=state.enemyAI.gold);
+  if(affordable.length===0) return null;
+  return affordable[Math.floor(Math.random()*affordable.length)];
+}
+function updateEnemyAI(dt){
+  const ai = state.enemyAI;
+  ai.gold += ai.income*dt;
+  ai.timer += dt;
+  // difficulty ramps with time
+  ai.spawnEvery = Math.max(1.1, 2.6 - state.time/60);
+  ai.income = 9 + state.time/25;
+  if(ai.timer >= ai.spawnEvery){
+    ai.timer = 0;
+    const t = pickEnemyUnit();
+    if(t && ai.gold >= UNIT_DEFS[t].cost){
+      ai.gold -= UNIT_DEFS[t].cost;
+      spawnUnit('enemy', t);
+    }
+  }
+}
+
+// ---------- Combat ----------
+function findTarget(u){
+  const def = UNIT_DEFS[u.type];
+  let nearest=null, nd=Infinity;
+  for(const o of state.units){
+    if(o.dead || o.team===u.team) continue;
+    const d = Math.abs(o.x-u.x);
+    if(d<nd){ nd=d; nearest=o; }
+  }
+  return {nearest, nd};
+}
+
+function dealDamage(target, dmg, sourceType){
+  let mult = 1;
+  if(sourceType && COUNTERS[sourceType] && COUNTERS[sourceType][target.type]) mult = COUNTERS[sourceType][target.type];
+  const total = Math.round(dmg*mult);
+  target.hp -= total;
+  spawnDamageNumber(target.x, unitY()-40, total, mult>1);
+  const dir = target.team==='player' ? -1 : 1;
+  target.koVel = dir*70;
+  spawnParticles(target.x, unitY()-16, mult>1 ? '#ffdf5e' : '#ffffff', mult>1?7:4, 60);
+  if(target.hp<=0 && !target.dead){
+    target.dead = true;
+    killUnitVisual(target);
+    if(target.team==='player') state.stats.lost++; else state.stats.kills++;
+  }
+}
+
+function spawnDamageNumber(worldX, worldY, val, crit){
+  const layer = document.getElementById('dmgLayer');
+  const el = document.createElement('div');
+  el.className='dmgNum';
+  el.textContent = '-'+val;
+  el.style.left = (worldX-8)+'px';
+  el.style.top = (worldY)+'px';
+  el.style.color = crit? '#ffdf5e':'#fff';
+  layer.appendChild(el);
+  setTimeout(()=>el.remove(), 800);
+}
+
+function updateUnits(dt){
+  for(const u of state.units){
+    if(u.dead) continue;
+    const def = UNIT_DEFS[u.type];
+    u.cdTimer -= dt;
+    u.attackSwing = Math.max(0, u.attackSwing - dt/0.3);
+    // knockback decay
+    u.koVel *= Math.max(0, 1 - dt*8);
+    u.koOffset += u.koVel*dt;
+    u.koOffset *= Math.max(0, 1 - dt*6);
+
+    const {nearest, nd} = findTarget(u);
+    const castleX = u.team==='player'? state.enemyX : state.playerX;
+    const distToCastle = Math.abs(castleX - u.x);
+    u.moving = false;
+
+    if(nearest && nd <= def.range+18){
+      if(u.cdTimer<=0){
+        u.cdTimer = def.atkCd;
+        u.attackSwing = 1;
+        if(def.ranged){
+          state.proj.push({x:u.x, y:unitY()-24, targetId:nearest.id, team:u.team, dmg:def.dmg, sourceType:u.type, speed:260});
+        } else {
+          dealDamage(nearest, def.dmg, u.type);
+        }
+      }
+    } else if(distToCastle <= def.range+10){
+      if(u.cdTimer<=0){
+        u.cdTimer = def.atkCd;
+        u.attackSwing = 1;
+        if(u.team==='player'){ state.enemyCastleHp -= def.dmg*0.8; spawnDamageNumber(castleX-30, unitY()-70, Math.round(def.dmg*0.8), false); }
+        else { state.playerCastleHp -= def.dmg*0.8; spawnDamageNumber(castleX+10, unitY()-70, Math.round(def.dmg*0.8), false); }
+        addShake(4, 0.15);
+        spawnParticles(castleX, unitY()-40, '#8a725a', 5, 40);
+      }
+    } else {
+      const dir = u.team==='player'? 1 : -1;
+      u.x += dir*def.speed*dt;
+      u.walkPhase += dt*(def.speed/12);
+      u.moving = true;
+    }
+  }
+
+  for(const u of state.units){ if(u.dead) killUnitVisual(u); }
+  state.units = state.units.filter(u=>!u.dead);
+
+  // projectiles
+  for(const p of state.proj){
+    const target = state.units.find(u=>u.id===p.targetId && !u.dead);
+    if(!target){ p.dead=true; continue; }
+    p.trail = p.trail || [];
+    p.trail.push({x:p.x,y:p.y}); if(p.trail.length>4) p.trail.shift();
+    const dir = target.x > p.x ? 1 : -1;
+    p.x += dir*p.speed*dt;
+    if(Math.abs(target.x-p.x) < 14){
+      dealDamage(target, p.dmg, p.sourceType);
+      p.dead = true;
+    }
+  }
+  state.proj = state.proj.filter(p=>!p.dead);
+}
+
+function updateFx(dt){
+  const fx = state.fx;
+  for(const p of fx.particles){
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.vy += 160*dt; // gravity
+    p.life -= dt;
+  }
+  fx.particles = fx.particles.filter(p=>p.life>0);
+
+  for(const d of fx.dyingUnits){ d.timer += dt; }
+  fx.dyingUnits = fx.dyingUnits.filter(d=>d.timer<d.dur);
+
+  if(fx.shakeTimer>0){ fx.shakeTimer -= dt; if(fx.shakeTimer<=0) fx.shakeMag=0; }
+}
+
+// ---------- Rendering ----------
+function drawStick(u){
+  const def = UNIT_DEFS[u.type];
+  const y = unitY();
+  const x = u.x + (u.koOffset||0);
+  const facing = u.team==='player' ? 1 : -1;
+  const swing = u.attackSwing||0; // 1 -> 0 over the swing duration
+  const swingPow = Math.sin((1-swing)*Math.PI); // 0 -> 1 -> 0 shape
+  const bob = u.moving ? Math.abs(Math.sin(u.walkPhase))*2 : Math.sin(performance.now()/400+u.walkPhase)*0.6;
+
+  ctx.save();
+  ctx.translate(x, y - bob);
+  ctx.strokeStyle = def.color;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 3;
+
+  // leg swing (walk cycle) or idle stance
+  const legSwing = u.moving ? Math.sin(u.walkPhase)*9 : Math.sin(performance.now()/500+u.walkPhase)*1.5;
+  ctx.beginPath();
+  ctx.moveTo(0,-2); ctx.lineTo(-6+legSwing*0.5, 14);
+  ctx.moveTo(0,-2); ctx.lineTo(6-legSwing*0.5, 14);
+  // body leans forward slightly on attack
+  const lean = swingPow*facing*3;
+  ctx.moveTo(0,-2); ctx.lineTo(lean,-22);
+  ctx.stroke();
+
+  // back arm (idle)
+  ctx.beginPath();
+  ctx.moveTo(lean,-18); ctx.lineTo(lean-facing*7,-10+swingPow*2);
+  ctx.stroke();
+
+  // front (weapon) arm swings out and back on attack
+  const armSwingX = facing*(9 + swingPow*10);
+  const armSwingY = -12 + swingPow*6;
+  ctx.beginPath();
+  ctx.moveTo(lean,-18); ctx.lineTo(lean+armSwingX, armSwingY);
+  ctx.stroke();
+
+  // head
+  ctx.beginPath();
+  ctx.arc(lean,-28,6,0,Math.PI*2);
+  ctx.fillStyle = def.color;
+  ctx.fill();
+  ctx.strokeStyle = u.team==='player' ? '#4caf50' : '#e74c3c';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // weapon glyph rides the front hand
+  ctx.font='12px sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(def.icon, lean+armSwingX*1.05, armSwingY-2);
+  ctx.restore();
+
+  // hp bar
+  const bw=26;
+  ctx.fillStyle='#000';
+  ctx.fillRect(x-bw/2, y-bob-46, bw, 4);
+  const hpFrac = u.hp/u.maxhp;
+  ctx.fillStyle = hpFrac>0.4? '#4caf50':'#e74c3c';
+  ctx.fillRect(x-bw/2, y-bob-46, bw*hpFrac, 4);
+}
+
+function drawDyingUnit(d){
+  const def = UNIT_DEFS[d.type];
+  const y = unitY();
+  const prog = Math.min(1, d.timer/d.dur);
+  const rot = prog*(Math.PI/2)*(d.team==='player'?-1:1);
+  ctx.save();
+  ctx.globalAlpha = 1-prog;
+  ctx.translate(d.x, y-2);
+  ctx.rotate(rot);
+  ctx.strokeStyle = def.color;
+  ctx.lineWidth = 3;
+  ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(-6,16);
+  ctx.moveTo(0,0); ctx.lineTo(6,16);
+  ctx.moveTo(0,0); ctx.lineTo(0,-20);
+  ctx.moveTo(0,-16); ctx.lineTo(-9,-8);
+  ctx.moveTo(0,-16); ctx.lineTo(9,-8);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0,-26,6,0,Math.PI*2);
+  ctx.fillStyle = def.color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of state.fx.particles){
+    ctx.globalAlpha = Math.max(0, p.life/p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawCastle(x, hpFrac, team){
+  const y = unitY();
+  ctx.save();
+  ctx.translate(x,y);
+  const dmgState = hpFrac<0.35 ? 2 : hpFrac<0.7 ? 1 : 0;
+  ctx.fillStyle = team==='player' ? '#7d6b57' : '#5f5346';
+  const flip = team==='player'? 1 : -1;
+  ctx.fillRect(-18*1, -70, 36, 70);
+  ctx.fillStyle = team==='player'?'#a0876a':'#8a725a';
+  ctx.fillRect(-24, -50, 48, 14);
+  ctx.fillStyle = '#4a3826';
+  ctx.fillRect(-6,-24,12,24);
+  if(dmgState>=1){ ctx.strokeStyle='#2b1d12'; ctx.beginPath(); ctx.moveTo(-10,-60); ctx.lineTo(2,-30); ctx.stroke(); }
+  if(dmgState>=2){ ctx.strokeStyle='#000'; ctx.beginPath(); ctx.moveTo(10,-65); ctx.lineTo(-4,-20); ctx.stroke();
+    ctx.fillStyle='rgba(60,30,10,.5)'; ctx.fillRect(-18,-70,36,70); }
+  ctx.restore();
+  // hp bar over castle
+  const bw=70;
+  ctx.fillStyle='#000'; ctx.fillRect(x-bw/2, y-84, bw, 6);
+  ctx.fillStyle= team==='player'?'#4caf50':'#e74c3c';
+  ctx.fillRect(x-bw/2, y-84, bw*Math.max(0,hpFrac), 6);
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(state.fx.shakeTimer>0){
+    const m = state.fx.shakeMag;
+    ctx.translate((Math.random()-0.5)*m, (Math.random()-0.5)*m);
+  }
+
+  // background hill line
+  ctx.fillStyle='rgba(0,0,0,0.08)';
+  ctx.fillRect(0, GROUND_Y+16, W, 4);
+
+  drawCastle(state.playerX, state.playerCastleHp/state.castleHpMax, 'player');
+  drawCastle(state.enemyX, state.enemyCastleHp/state.castleHpMax, 'enemy');
+
+  for(const d of state.fx.dyingUnits) drawDyingUnit(d);
+  for(const u of state.units) drawStick(u);
+
+  for(const p of state.proj){
+    ctx.strokeStyle = p.team==='player' ? 'rgba(46,125,50,0.5)':'rgba(183,28,28,0.5)';
+    if(p.trail && p.trail.length>1){
+      ctx.beginPath();
+      ctx.moveTo(p.trail[0].x, p.trail[0].y);
+      for(const t of p.trail) ctx.lineTo(t.x,t.y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = p.team==='player' ? '#2e7d32':'#b71c1c';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  drawParticles();
+  ctx.restore();
+}
+
+// ---------- HUD ----------
+function updateHud(){
+  document.getElementById('goldTxt').textContent = Math.floor(state.gold);
+  document.getElementById('incomeTxt').textContent = state.income.toFixed(1);
+  document.getElementById('workerTxt').textContent = state.workers;
+  document.getElementById('playerHpBar').style.width = Math.max(0,(state.playerCastleHp/state.castleHpMax*100))+'%';
+  document.getElementById('enemyHpBar').style.width = Math.max(0,(state.enemyCastleHp/state.castleHpMax*100))+'%';
+  const m = Math.floor(state.time/60), s = Math.floor(state.time%60);
+  document.getElementById('timeTxt').textContent = m+':'+(s<10?'0':'')+s;
+  document.getElementById('workerCostTxt').textContent = Math.floor(state.workerCost);
+
+  document.querySelectorAll('.unitBtn').forEach(btn=>{
+    const type = btn.dataset.type;
+    btn.disabled = state.gold < UNIT_DEFS[type].cost;
+  });
+  document.getElementById('btnWorker').disabled = state.gold < state.workerCost;
+}
+
+// ---------- Buttons setup ----------
+function buildUnitButtons(){
+  const wrap = document.getElementById('unitButtons');
+  wrap.innerHTML='';
+  Object.entries(UNIT_DEFS).forEach(([type,def])=>{
+    const b = document.createElement('button');
+    b.className='unitBtn';
+    b.dataset.type=type;
+    b.innerHTML = `<span class="key">${def.key}</span><div class="icon">${def.icon}</div><div>${def.name}</div><div class="cost">💰${def.cost}</div>`;
+    b.onclick = ()=>trySpawnPlayer(type);
+    wrap.appendChild(b);
+  });
+}
+function trySpawnPlayer(type){
+  if(!state.running || state.paused || state.over) return;
+  const def = UNIT_DEFS[type];
+  if(state.gold >= def.cost){
+    state.gold -= def.cost;
+    spawnUnit('player', type);
+  }
+}
+function tryRecruitWorker(){
+  if(!state.running || state.paused || state.over) return;
+  if(state.gold >= state.workerCost){
+    state.gold -= state.workerCost;
+    state.workers++;
+    state.income += 4.5;
+    state.workerCost = Math.round(state.workerCost*1.35);
+    showToast('Worker recruited! +4.5 income/s');
+  }
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.opacity=1;
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>t.style.opacity=0, 1400);
+}
+
+// ---------- Game loop ----------
+let lastT = null;
+function loop(ts){
+  if(!state.running){ return; }
+  if(lastT===null) lastT = ts;
+  let dt = (ts-lastT)/1000;
+  lastT = ts;
+  dt = Math.min(dt, 0.05);
+
+  if(!state.paused && !state.over){
+    state.time += dt;
+    state.gold += state.income*dt;
+    state.stats.goldEarned += state.income*dt;
+    updateEnemyAI(dt);
+    updateUnits(dt);
+    updateFx(dt);
+
+    if(state.enemyCastleHp<=0){ endGame(true); }
+    else if(state.playerCastleHp<=0){ endGame(false); }
+  }
+  render();
+  updateHud();
+  requestAnimationFrame(loop);
+}
+
+function endGame(victory){
+  state.over = true;
+  addShake(10, 0.5);
+  spawnParticles(victory ? state.enemyX : state.playerX, unitY()-40, '#8a725a', 24, 90);
+  document.getElementById('endTitle').textContent = victory? '🏆 VICTORY!' : '💀 DEFEAT';
+  document.getElementById('stSpawned').textContent = state.stats.spawned;
+  document.getElementById('stKills').textContent = state.stats.kills;
+  document.getElementById('stLost').textContent = state.stats.lost;
+  document.getElementById('stGold').textContent = Math.floor(state.stats.goldEarned);
+  const m = Math.floor(state.time/60), s = Math.floor(state.time%60);
+  document.getElementById('stTime').textContent = m+':'+(s<10?'0':'')+s;
+  document.getElementById('endOverlay').classList.remove('hidden');
+}
+
+function startGame(){
+  state = freshState();
+  buildUnitButtons();
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endOverlay').classList.add('hidden');
+  document.getElementById('pauseOverlay').classList.add('hidden');
+  document.getElementById('dmgLayer').innerHTML='';
+  state.running = true;
+  lastT = null;
+  requestAnimationFrame(loop);
+}
+
+function togglePause(){
+  if(!state || !state.running || state.over) return;
+  state.paused = !state.paused;
+  document.getElementById('pauseOverlay').classList.toggle('hidden', !state.paused);
+}
+
+// ---------- Wire up UI ----------
+document.getElementById('btnPlay').onclick = startGame;
+document.getElementById('btnHow').onclick = ()=>document.getElementById('howOverlay').classList.remove('hidden');
+document.getElementById('btnHowClose').onclick = ()=>document.getElementById('howOverlay').classList.add('hidden');
+document.getElementById('btnWorker').onclick = tryRecruitWorker;
+document.getElementById('btnPause').onclick = togglePause;
+document.getElementById('btnResume').onclick = togglePause;
+document.getElementById('btnRestartP').onclick = startGame;
+document.getElementById('btnRestartE').onclick = startGame;
+
+window.addEventListener('keydown', (e)=>{
+  if(!state || !state.running) return;
+  const map = {'1':'swordsman','2':'archer','3':'spearman','4':'knight'};
+  if(map[e.key]) trySpawnPlayer(map[e.key]);
+  if(e.key.toLowerCase()==='w') tryRecruitWorker();
+  if(e.code==='Space'){ e.preventDefault(); togglePause(); }
+});
+
+// initial idle render behind start screen
+state = freshState();
+render();
+})();
+</script>
+</body>
+</html>
